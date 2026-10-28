@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Floodmonitor</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; color: #17324d; }
+    h1 { margin-bottom: .25rem; } #updated, #message { color: #52677a; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1.25rem; }
+    th, td { border-bottom: 1px solid #d9e2ea; padding: .7rem; text-align: left; }
+    th { background: #eef4f8; } .WARNING { color: #9b6500; font-weight: 700; }
+    .CRITICAL { color: #b42318; font-weight: 700; } .NORMAL { color: #18794e; }
+    @media (max-width: 650px) { body { margin-top: 1rem; } table { font-size: .85rem; } th, td { padding: .45rem .25rem; } }
+  </style>
+</head>
+<body>
+  <h1>Floodmonitor</h1>
+  <div id="updated">Lade Stationsdaten …</div>
+  <label for="format">Antwortformat: </label>
+  <select id="format"><option value="json">JSON</option><option value="xml">XML</option></select>
+  <p id="message" role="status"></p>
+  <table>
+    <thead><tr><th>Station</th><th>Wasserstand</th><th>Durchfluss</th><th>Temperatur</th><th>Akku</th><th>Status</th><th>Warnstufe</th><th>Zeitpunkt</th></tr></thead>
+    <tbody id="stations"></tbody>
+  </table>
+  <script src="/webjars/jquery/3.7.1/jquery.min.js"></script>
+  <script>
+    $(function () {
+      function refresh() {
+        const format = $('#format').val();
+        $.ajax({
+          url: '/api/v1/stations',
+          method: 'GET',
+          headers: { Accept: format === 'xml' ? 'application/xml' : 'application/json' },
+          dataType: format
+        })
+          .done(function (response) {
+            const stations = format === 'xml'
+              ? $(response).find('item').toArray().map(function (item) {
+                  const $item = $(item);
+                  const station = {};
+                  $item.children().each(function () { station[this.tagName] = $(this).text(); });
+                  return station;
+                })
+              : response;
+            const rows = stations.map(function (station) {
+              const values = [station.stationName, `${station.waterLevel} ${station.unit || ''}`.trim(), station.flowRate,
+                station.waterTemperature, `${station.batteryLevel}%`, station.status, station.warnLevel, station.timestamp];
+              const $row = $('<tr>');
+              values.forEach(function (value, index) {
+                const $cell = $('<td>').text(value == null ? '–' : value);
+                if (index === 6) $cell.addClass(station.warnLevel || '');
+                $row.append($cell);
+              });
+              return $row;
+            });
+            $('#stations').empty().append(rows);
+            $('#updated').text(`Zuletzt aktualisiert: ${new Date().toLocaleTimeString('de-AT')}`);
+            $('#message').text('');
+          })
+          .fail(function (xhr) {
+            $('#message').text(`Stationsdaten konnten nicht geladen werden (HTTP ${xhr.status}).`);
+          });
+      }
+      refresh();
+      $('#format').on('change', refresh);
+      window.setInterval(refresh, 10000);
+    });
+  </script>
+</body>
+</html>
